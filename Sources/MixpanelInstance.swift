@@ -8,11 +8,11 @@
 
 import Foundation
 
-#if !os(OSX)
+#if !os(macOS)
   import UIKit
 #else
   import Cocoa
-#endif  // os(OSX)
+#endif  // os(macOS)
 #if os(iOS)
   import SystemConfiguration
 #endif
@@ -225,7 +225,7 @@ open class MixpanelInstance: CustomDebugStringConvertible, FlushDelegate, AEDele
 
   /// The minimum session duration (ms) that is tracked in automatic events.
   /// The default value is 10000 (10 seconds).
-  #if os(iOS) || os(tvOS) || os(visionOS)
+  #if os(iOS) || os(tvOS) || os(visionOS) || os(macOS)
     open var minimumSessionDuration: UInt64 {
       get {
         return automaticEvents.minimumSessionDuration
@@ -258,13 +258,13 @@ open class MixpanelInstance: CustomDebugStringConvertible, FlushDelegate, AEDele
     static let reachability = SCNetworkReachabilityCreateWithName(nil, "api.mixpanel.com")
     static let telephonyInfo = CTTelephonyNetworkInfo()
   #endif
-  #if !os(OSX) && !os(watchOS)
+  #if !os(macOS) && !os(watchOS)
     var taskId = UIBackgroundTaskIdentifier.invalid
-  #endif  // os(OSX)
+  #endif  // os(macOS)
   let sessionMetadata: SessionMetadata
   let flushInstance: Flush
   let trackInstance: Track
-  #if os(iOS) || os(tvOS) || os(visionOS)
+  #if os(iOS) || os(tvOS) || os(visionOS) || os(macOS)
     let automaticEvents = AutomaticEvents()
   #endif
   private let registerSuperPropertiesNotificationName = Notification.Name(
@@ -445,11 +445,18 @@ open class MixpanelInstance: CustomDebugStringConvertible, FlushDelegate, AEDele
       registerSuperProperties(superProperties)
     }
 
-    #if os(iOS) || os(tvOS) || os(visionOS)
-      if !MixpanelInstance.isiOSAppExtension() && trackAutomaticEvents {
-        automaticEvents.delegate = self
-        automaticEvents.initializeEvents(instanceName: self.name)
-      }
+    #if os(iOS) || os(tvOS) || os(visionOS) || os(macOS)
+      #if os(macOS)
+        if trackAutomaticEvents {
+          automaticEvents.delegate = self
+          automaticEvents.initializeEvents(instanceName: self.name)
+        }
+      #else
+        if !MixpanelInstance.isiOSAppExtension() && trackAutomaticEvents {
+          automaticEvents.delegate = self
+          automaticEvents.initializeEvents(instanceName: self.name)
+        }
+      #endif
     #endif
     flags.loadFlags()
   }
@@ -466,7 +473,7 @@ open class MixpanelInstance: CustomDebugStringConvertible, FlushDelegate, AEDele
     return anonymousId
   }
 
-  #if !os(OSX) && !os(watchOS)
+  #if !os(macOS) && !os(watchOS)
     private func setupListeners() {
       let notificationCenter = NotificationCenter.default
       #if os(iOS) && !targetEnvironment(macCatalyst)
@@ -513,7 +520,7 @@ open class MixpanelInstance: CustomDebugStringConvertible, FlushDelegate, AEDele
         )
       }
     }
-  #elseif os(OSX)
+  #elseif os(macOS)
     private func setupListeners() {
       let notificationCenter = NotificationCenter.default
       notificationCenter.addObserver(
@@ -526,8 +533,20 @@ open class MixpanelInstance: CustomDebugStringConvertible, FlushDelegate, AEDele
         selector: #selector(applicationDidBecomeActive(_:)),
         name: NSApplication.didBecomeActiveNotification,
         object: nil)
+      notificationCenter.addObserver(
+        self,
+        selector: #selector(handleSuperPropertiesRegistrationNotification(_:)),
+        name: registerSuperPropertiesNotificationName,
+        object: nil
+      )
+      notificationCenter.addObserver(
+        self,
+        selector: #selector(handleSuperPropertiesRegistrationNotification(_:)),
+        name: unregisterSuperPropertiesNotificationName,
+        object: nil
+      )
     }
-  #endif  // os(OSX)
+  #endif  // os(macOS)
 
   deinit {
     NotificationCenter.default.removeObserver(self)
@@ -547,7 +566,7 @@ open class MixpanelInstance: CustomDebugStringConvertible, FlushDelegate, AEDele
     return Bundle.main.bundlePath.hasSuffix(".appex")
   }
 
-  #if !os(OSX) && !os(watchOS)
+  #if !os(macOS) && !os(watchOS)
     static func sharedUIApplication() -> UIApplication? {
       guard
         let sharedApplication =
@@ -558,7 +577,7 @@ open class MixpanelInstance: CustomDebugStringConvertible, FlushDelegate, AEDele
       }
       return sharedApplication
     }
-  #endif  // !os(OSX)
+  #endif  // !os(macOS)
 
   @objc private func applicationDidBecomeActive(_ notification: Notification) {
     flushInstance.applicationDidBecomeActive()
@@ -566,7 +585,7 @@ open class MixpanelInstance: CustomDebugStringConvertible, FlushDelegate, AEDele
 
   @objc private func applicationWillResignActive(_ notification: Notification) {
     flushInstance.applicationWillResignActive()
-    #if os(OSX)
+    #if os(macOS)
       if flushOnBackground {
         flush()
       }
@@ -574,7 +593,7 @@ open class MixpanelInstance: CustomDebugStringConvertible, FlushDelegate, AEDele
     #endif
   }
 
-  #if !os(OSX) && !os(watchOS)
+  #if !os(macOS) && !os(watchOS)
     @objc private func applicationDidEnterBackground(_ notification: Notification) {
       guard let sharedApplication = MixpanelInstance.sharedUIApplication() else {
         return
@@ -643,7 +662,7 @@ open class MixpanelInstance: CustomDebugStringConvertible, FlushDelegate, AEDele
 
   func uniqueIdentifierForDevice() -> String? {
     var distinctId: String?
-    #if os(OSX)
+    #if os(macOS)
       distinctId = MixpanelInstance.macOSIdentifier()
     #elseif !os(watchOS)
       if NSClassFromString("UIDevice") != nil {
@@ -657,7 +676,7 @@ open class MixpanelInstance: CustomDebugStringConvertible, FlushDelegate, AEDele
     return distinctId
   }
 
-  #if os(OSX)
+  #if os(macOS)
     static func macOSIdentifier() -> String? {
       let platformExpert: io_service_t = IOServiceGetMatchingService(
         kIOMasterPortDefault, IOServiceMatching("IOPlatformExpertDevice"))
@@ -667,7 +686,7 @@ open class MixpanelInstance: CustomDebugStringConvertible, FlushDelegate, AEDele
       IOObjectRelease(platformExpert)
       return (serialNumberAsCFString?.takeUnretainedValue() as? String)
     }
-  #endif  // os(OSX)
+  #endif  // os(macOS)
 
   #if os(iOS)
     func updateNetworkActivityIndicator(_ on: Bool) {
